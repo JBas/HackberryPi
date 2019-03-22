@@ -1,4 +1,9 @@
 import main
-import config
 
-main.readADC(config.soil_adc)
+while (True):
+    try:
+        print("{0}\n".format(main.readADC(main.soil_adc)))
+    except KeyboardInterrupt:
+        print("Closing!\n")
+
+
