@@ -27,7 +27,11 @@ def readDHT():
         
 
 def readSoilMoisture():
+    def mapRange(x, imin, imax, omin, omax):
+        return (x - imin)*(omax - omin) / (imax - imin) + omin
+
     GPIO.setup(config.soilPwr, GPIO.OUTPUT)
+    GPIO.output(config.soilPwr, GPIO.LOW)
     
     spi = spidev.SpiDev()
     spi.open(0, 0)
@@ -37,8 +41,14 @@ def readSoilMoisture():
             # read soil moisture data
             if (config.read):
                 GPIO.output(config.soilPwr, GPIO.HIGH)
-                print(readADC(config.soilSig))
-
+                data = readADC(config.soil_adc)
+                if (data == -1):
+                    print("Error Reading Soil!\n")
+                else:
+                    data = mapRange(data,
+                                    config.imin, config.imax,
+                                    config.omin, config.omax)
+                    print("Moisture={0:0.1f}".format(data))
             GPIO.output(config.soilPwr, GPIO.LOW)
             time.sleep(300000) # wait 5 minutes
     except KeyboardInterrupt:
@@ -74,3 +84,4 @@ if __name__ == "__main__":
 
     soil_id.join()
     dht_id.join()
+    return
