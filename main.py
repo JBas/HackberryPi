@@ -11,9 +11,10 @@ import Adafruit_DHT as DHT
 
 #-----------------------Definitions-----------------------#
 # Based on GPIO.BOARD mode
-
 soilPwr = 11 # provides power to sensor
 soil_adc = 0 # MCP3008 channel
+
+motor_pwm = 1
 
 #dhtPwr = 13 # provides power to sensor
 dht_sig = 17 # grabs sensor data
@@ -113,14 +114,25 @@ def plotData(xp_humid, yp_humid, xp_temp, yp_tmep, xp_soil, yp_soil):
             title="Humidity v Time")
 
 def saveData():
-    with open("data.txt", "wb") as file:
-        json.dump(xp_temp, file)
-        json.dump(yp_temp, file)
-        json.dump(xp_humid, file)
-        json.dump(yp_humid, file)
-        json.dump(xp_soil, file)
-        json.dump(yp_soil, file)
+    with open("data.json", "wb") as file:
+        json.dumps(xp_temp, file, indent=2)
+        json.dumps(yp_temp, file, indent=2)
+        json.dumps(xp_humid, file, indent=2)
+        json.dumps(yp_humid, file, indent=2)
+        json.dumps(xp_soil, file, indent=2)
+        json.dumps(yp_soil, file, indent=2)
+    with open("data.json") as file:
+        print(json.loads(file).read())
 
+def motorDriver(p):
+    if (True):
+        for dc in range(0, 26, 5):
+            p.ChangeDutyCycle(dc)
+            time.sleep(0.1)
+        for dc in range(25, -1, -5):
+            p.ChangeDutyCycle(dc)
+    p.ChangeDutyCycle(0)
+    return
 
 def main():
     # data arrays
@@ -139,21 +151,25 @@ def main():
     GPIO.setup(soilPwr, GPIO.OUTPUT)
     GPIO.output(soilPwr, GPIO.LOW)
 
-    try:
+    p = GPIO.PWM(motor_pwm, 1)
+    p.start(0)
 
+    try:
         while (True):
             readDHT(xp_humid, yp_humid, xp_temp, yp_temp)
             readSoilMoisture(xp_soil, yp_soil)
+            motorDriver(p)
             plotData(xp_humid, yp_humid, xp_temp, yp_tmep, xp_soil, yp_soil)
             plt.show()
     except KeyboardInterrupt:
-        print("Thank you for using our design!")
+        print("Thank you for using our hack!")
         time.sleep(500)
         print("Goodbye!")
     finally:
-        saveData()
+        p.stop()
         spi.close()
         GPIO.cleanup()
+        saveData()
     return
 
 if __name__ == "__main__":
