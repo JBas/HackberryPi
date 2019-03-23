@@ -1,6 +1,9 @@
-from threading import Thread
+from threading import Thread, Lock
 import time
-import matplotlib.pyplot as plot
+import datetime as dt
+import matplotlib
+matplotlib.use("TkAgg")
+import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import RPi.GPIO as GPIO
 import spidev
@@ -12,8 +15,8 @@ import Adafruit_DHT as DHT
 soilPwr = 11 # provides power to sensor
 soil_adc = 0 # MCP3008 channel
 
-tempPwr = 13 # provides power to sensor
-temp = 29 # grabs sensor data
+#dhtPwr = 13 # provides power to sensor
+dht_sig = 17 # grabs sensor data
 
 # boolean to read soil moisture
 read = True
@@ -39,37 +42,43 @@ soil_lock = Lock()
 dht_lock = Lock()
 
 # matplotlib setup
-fig = plot.figure()
-ax1 = fig.add_subplot(1, 1, 1)
-ax2 = fig.add_subplot(1, 1, 2)
-ax2 = fig.add_subplot(1, 1, 3)
+fig = plt.figure()
+ax1 = fig.add_subplot(3, 1, 1)
+ax2 = fig.add_subplot(3, 1, 2)
+ax3 = fig.add_subplot(3, 1, 3)
 
 #--------------------Thread Functions--------------------#
 
-def readDHT():
+def readDHT(xp_humid, yp_humid, xp_temp, yp_temp):
     try:
-        sensor = DHT.DHT11
         while (True):
             # read temp/humid data
-            dht_lock.acquire()
-            try:
-                humidity, temperature = DHT.read_retry(sensor, temp)
-                if ((humidity is not None) and (temperature is not None)):
-                    print("Temp={0:0.1f}*, Humidity={0:0.1f}%\n".format(temperature, humidity))
-                    yp_humid.append(humidity)
-                    yp_temp.append(temperature)
-                    #time data
-                else:
-                    print("Error Reading DHT!\n")
-            finally:
-                dht_lock.release()
+            if (dht_lock.acquire()):
+                try:
+                    humidity, temperature = DHT.read_retry(DHT.DHT11, dht_sig)
+                    if ((humidity is not None) and (temperature is not None)):
+                        print("Temp={0:0.1f}*, Humidity={0:0.1f}%\n".format(temperature, humidity))
+                        t = dt.datetime.now().strftime("%H:%M")
+                        xp_humid.append(t)
+                        xp_humid = xp_humid[-100:]
 
-            time.sleep(300000) # wait 5 minutes
-            i = 1/0
+                        yp_humid.append(humidity)
+                        yp_humid = yp_humid[-100:]
+
+                        yp_temp.append(temperature)
+                        yp_temp = yp_temp[-100:]
+                    
+                        xp_temp.append(t)
+                        xp_temp = xp_temp[-100:]
+                    else:
+                        print("Error Reading DHT!\n")
+                finally:
+                    dht_lock.release()
+                time.sleep(5) # wait 5 minutes
+            else:
+                print("Lock NOT Acquired!\n")
     except KeyboardInterrupt:
         print("Ctrl-C pressed, from DHT!\n")
-    except ZeroDivisionError:
-        print("Divided by 0, from DHT!\n")
     finally:
         print("DHT closed!\n")
         
@@ -91,7 +100,7 @@ def readSoilMoisture():
                 soil_lock.acquire()
                 try:
                     GPIO.output(soilPwr, GPIO.HIGH)
-                    data = readADC(soil_adc)
+                    data = readADC(soil_adc, spi)
                     if (data == -1):
                         print("Error Reading Soil!\n")
                     else:
@@ -100,6 +109,11 @@ def readSoilMoisture():
                         #                 config.omin, config.omax)
                         print("Moisture={0:0.1f}".format(data))
                         yp_soil.append(data)
+                        yp_soil = yp_soil[-100:]
+
+                        t = dt.datetime.now().strftime("%H:%M")
+                        xp_soil.append(t)
+                        xp_soil = xp_soil[-100:]
                 finally:
                     soil_lock.release()
 
@@ -112,8 +126,7 @@ def readSoilMoisture():
         GPIO.cleanup(soilPwr)
         print("Soil closed!")
 
-def readADC(chan):
-    # read ADC data
+def readADC(chan, spi):
     # mostly taken from:
     # https://github.com/pimylifeup/Pi-ADC-Example-Code
     if ((chan > 7) or (chan < 0)):
@@ -126,38 +139,52 @@ def readADC(chan):
     # 0 is read as dont cares
     # See Section 6.1 for more info
     datum = spi.xfer2([1, (0x1000 + chan) << 4, 0])
+    datum = ((datum[1] & 0x11) << 8) + datum[2]
     return datum
 
-def animate(i):
-    soil_lock.acquire()
-    try:
-        ax1.clear()
-        ax1.plot(xp_soil, yp_soil)
-    finally:
-        soil_lock.release()
+def animate(i, xp_humid, yp_humid, xp_temp, yp_temp):
+    #soil_lock.acquire()
+    #try:
+    #    ax1.clear()
+    #    ax1.plot(xp_soil, yp_soil)
+    #    ax1.set_title("Soil Moisture v Time")
+    #finally:
+    #    soil_lock.release()
 
-    dht_lock.acquire()
-    try:
+    if (True):#dht_lock.acquire()):
+        #try:
+        print(yp_humid)
         ax2.clear()
         ax2.plot(xp_temp, yp_temp)
+        ax2.set_title("Temperature v Time")
 
         ax3.clear()
         ax3.plot(xp_humid, yp_humid)
-    finally:
-        dht_lock.release
+        ax3.set_title("Humidity v Time")
+        #finally:
+        #    dht_lock.release
+    else:
+        print("Lock NOT Acquired!\n")
 
-if __name__ == "__main__":
+def main():
     GPIO.setmode(GPIO.BOARD)
 
-    soil_id = Thread(name="Soil", target=readSoilMoisture)
-    dht_id = Thread(name="DHT11", target=readDHT)
+    #soil_id = Thread(name="Soil", target=readSoilMoisture)
+    dht_id = Thread(name="DHT11", target=readDHT,
+                    args=(xp_humid, yp_humid,
+                          xp_temp, yp_temp))
 
-    soil_id.start()
+    #soil_id.start()
     dht_id.start()
 
-    scene = animation.FuncAnimation(fig, animate, interval=300000)
-    plot.show()
+    scene = animation.FuncAnimation(fig, animate, interval=1000,
+                                    fargs=(xp_humid, yp_humid,
+                                           xp_temp, yp_temp))
+    plt.show()
 
-    soil_id.join()
+    #soil_id.join()
     dht_id.join()
     return
+
+if __name__ == "__main__":
+    main()
