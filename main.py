@@ -1,6 +1,7 @@
 import time
 import datetime as dt
 import json
+from pprint import pprint
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -11,14 +12,16 @@ import Adafruit_DHT as DHT
 
 #-----------------------Definitions-----------------------#
 # Based on GPIO.BOARD mode
-soilPwr = 11 # provides power to sensor
-soil_adc = 0 # MCP3008 channel
+SOIL_PWR = 17 # provides power to sensor
+SOIL_ADC = 0 # MCP3008 channel
 
-motor_pwm = 1
+MOTOR_PWM = 18
 
 #dhtPwr = 13 # provides power to sensor
-dht_sig = 17 # grabs sensor data
+DHT_SIG = 17 # grabs sensor data
 
+BTN = 23
+on = True
 
 # SPI interface
 spi = spidev.SpiDev()
@@ -37,34 +40,28 @@ ax3 = fig.add_subplot(3, 1, 3)
 
 #--------------------Thread Functions--------------------#
 
-def readDHT(xp_humid, yp_humid, xp_temp, yp_temp):
+def readDHT(data_humid, data_temp):
     # read temp/humid data
-    humidity, temperature = DHT.read_retry(DHT.DHT11, dht_sig)
+    humidity, temperature = DHT.read_retry(DHT.DHT11, DHT_SIG)
     if ((humidity is not None) and (temperature is not None)):
         #print("Temp={0:0.1f}*, Humidity={0:0.1f}%\n".format(temperature, humidity))
         t = dt.datetime.now().strftime("%H:%M:%S:%f")
-        xp_humid.append(t)
-        xp_humid = xp_humid[-100:]
+        data_humid.append((t, humidity))
+        data_humid = data_humid[-100:]
 
-        yp_humid.append(humidity)
-        yp_humid = yp_humid[-100:]
-
-        yp_temp.append(temperature)
-        yp_temp = yp_temp[-100:]
-                    
-        xp_temp.append(t)
-        xp_temp = xp_temp[-100:]
+        data_temp.append((t, temperature))
+        data_temp = data_temp[-100:]
     else:
         print("Error Reading DHT!\n")
     return
 
-def readSoilMoisture(xp_soil, yp_soil):
+def readSoilMoisture(data_soil):
     def mapRange(x, imin, imax, omin, omax):
         return (x - imin)*(omax - omin) / (imax - imin) + omin
 
     # read soil moisture data
-    GPIO.output(soilPwr, GPIO.HIGH)
-    data = readADC(soil_adc)
+    GPIO.output(SOIL_PWR, GPIO.HIGH)
+    data = readADC(SOIL_ADC)
     if (data == -1):
         print("Error Reading Soil!\n")
     else:
@@ -72,14 +69,11 @@ def readSoilMoisture(xp_soil, yp_soil):
         #config.imin, config.imax,
         #config.omin, config.omax)
         #print("Moisture={0:0.1f}".format(data))
-        yp_soil.append(data)
-        yp_soil = yp_soil[-100:]
-
         t = dt.datetime.now().strftime("%H:%M")
-        xp_soil.append(t)
-        xp_soil = xp_soil[-100:]
+        data_soil.append((t, data))
+        data_soil = data_soil[-100:]
 
-    GPIO.output(soilPwr, GPIO.LOW)
+    GPIO.output(SOIL_PWR, GPIO.LOW)
     return
 
 def readADC(chan):
@@ -97,32 +91,42 @@ def readADC(chan):
     datum = ((datum[1] & 0x11) << 8) + datum[2]
     return datum
 
-def plotData(xp_humid, yp_humid, xp_temp, yp_tmep, xp_soil, yp_soil):
-    ax1.clear()
-    ax1.plot(xp_soil, yp_soil)
-    ax1.set(xlabel="time", ylabel="voltage",
-            title="Soil Moisture v Time")
+def plotData(i, data_humid, data_temp, data_soil):
+    if (on):
+        readDHT(data_humid, data_temp)
+        #readSoilMoisture(data_soil)
+        #motorDriver(p)
 
-    ax2.clear()
-    ax2.plot(xp_temp, yp_temp)
-    ax2.set(xlabel="time", ylabel="voltage",
-            title="Temperature v Time")
+        ax1.clear()
+        ax1.plot(*zip(*data_soil))
+        ax1.set(xlabel="time", ylabel="voltage",
+                title="Soil Moisture v Time",
+                xticklabels=[])
+        ax1.tick_params(bottom=False)
 
-    ax3.clear()
-    ax3.plot(xp_humid, yp_humid)
-    ax3.set(xlabel="time", ylabel="voltage",
-            title="Humidity v Time")
+        ax2.clear()
+        ax2.plot(*zip(*data_temp))
+        ax2.set(xlabel="time", ylabel="voltage",
+                title="Temperature v Time",
+                xticklabels=[])
+        ax2.tick_params(bottom=False)
 
-def saveData():
-    with open("data.json", "wb") as file:
-        json.dumps(xp_temp, file, indent=2)
-        json.dumps(yp_temp, file, indent=2)
-        json.dumps(xp_humid, file, indent=2)
-        json.dumps(yp_humid, file, indent=2)
-        json.dumps(xp_soil, file, indent=2)
-        json.dumps(yp_soil, file, indent=2)
+        ax3.clear()
+        ax3.plot(*zip(*data_humid))
+        ax3.set(xlabel="time", ylabel="voltage",
+                title="Humidity v Time",
+                xticklabels=[])
+        ax3.tick_params(bottom=False)
+    else:
+        plt.close("all")
+    return
+
+def saveData(data_humid, data_temp, data_soil):
+    with open("data.json", "w") as file:
+        json.dump([data_humid, data_temp, data_soil], file)
     with open("data.json") as file:
-        print(json.loads(file).read())
+        pprint(json.load(file))
+    return
 
 def motorDriver(p):
     if (True):
@@ -136,40 +140,51 @@ def motorDriver(p):
 
 def main():
     # data arrays
-    xp_soil = []
-    yp_soil = []
+    data_soil = []
 
-    xp_temp = []
-    yp_temp = []
+    data_temp = []
 
-    xp_humid = []
-    yp_humid = []
+    data_humid = []
 
     spi.open(0, 0)
-    GPIO.setmode(GPIO.BOARD)
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(BTN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-    GPIO.setup(soilPwr, GPIO.OUTPUT)
-    GPIO.output(soilPwr, GPIO.LOW)
+    def terminate(channel):
+        global on
+        on = False
+        return
 
-    p = GPIO.PWM(motor_pwm, 1)
-    p.start(0)
+    GPIO.add_event_detect(BTN, GPIO.FALLING,
+                          callback=terminate, bouncetime=200)
+
+    #GPIO.setup(SOIL_PWR, GPIO.OUT)
+    #GPIO.output(SOIL_PWR, GPIO.LOW)
+
+    #p = GPIO.PWM(MOTOR_PWM, 1)
+    #p.start(0)
 
     try:
-        while (True):
-            readDHT(xp_humid, yp_humid, xp_temp, yp_temp)
-            readSoilMoisture(xp_soil, yp_soil)
-            motorDriver(p)
-            plotData(xp_humid, yp_humid, xp_temp, yp_tmep, xp_soil, yp_soil)
-            plt.show()
-    except KeyboardInterrupt:
-        print("Thank you for using our hack!")
-        time.sleep(500)
-        print("Goodbye!")
+        ani = animation.FuncAnimation(fig, plotData, interval=1000,
+                                      fargs=(data_humid,
+                                             data_temp,
+                                             data_soil))
+        plt.show()
     finally:
-        p.stop()
+        #p.stop()
         spi.close()
         GPIO.cleanup()
-        saveData()
+        print("Thank you!", end=" ")
+        time.sleep(1)
+        print(".", end=" ")
+        time.sleep(0.5)
+        print(".", end=" ")
+        time.sleep(0.5)
+        print(".", end=" ")
+        time.sleep(0.5)
+        print("\nGoodbye!")
+
+        #saveData(data_humid, data_temp, data_soil)
     return
 
 if __name__ == "__main__":
