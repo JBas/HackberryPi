@@ -1,4 +1,5 @@
 import time
+from threading import Lock
 import datetime as dt
 import json
 from pprint import pprint
@@ -14,14 +15,19 @@ import Adafruit_DHT as DHT
 # Based on GPIO.BOARD mode
 SOIL_PWR = 17 # provides power to sensor
 SOIL_ADC = 0 # MCP3008 channel
+THRESHOLD = 1
 
 MOTOR_PWM = 18
+
+motor_lock = Lock()
 
 #dhtPwr = 13 # provides power to sensor
 DHT_SIG = 17 # grabs sensor data
 
-BTN = 23
+BTN_PWR = 23
+BTN_WATER = 24
 on = True
+manWater = False
 
 # SPI interface
 spi = spidev.SpiDev()
@@ -95,7 +101,17 @@ def plotData(i, data_humid, data_temp, data_soil):
     if (on):
         readDHT(data_humid, data_temp)
         #readSoilMoisture(data_soil)
-        #motorDriver(p)
+
+        if (not manWater):
+            try:
+                if (data_soil[-1][1] < THRESHOLD):
+                    #motorDriver(p)
+            except IndexError:
+                print("Empty List!")
+        else:
+            water_lock.acquire(blocking=False)
+            manWater = False
+            water_lock.release()
 
         ax1.clear()
         ax1.plot(*zip(*data_soil))
@@ -128,35 +144,39 @@ def saveData(data_humid, data_temp, data_soil):
         pprint(json.load(file))
     return
 
-def motorDriver(p):
-    if (True):
-        for dc in range(0, 26, 5):
-            p.ChangeDutyCycle(dc)
-            time.sleep(0.1)
-        for dc in range(25, -1, -5):
-            p.ChangeDutyCycle(dc)
+def waterPlant(p):
+    p.ChangeDutyCycle(0.5)
+    time.sleep(2000)
     p.ChangeDutyCycle(0)
     return
 
 def main():
     # data arrays
     data_soil = []
-
     data_temp = []
-
     data_humid = []
 
     spi.open(0, 0)
     GPIO.setmode(GPIO.BCM)
-    GPIO.setup(BTN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-    def terminate(channel):
-        global on
+    GPIO.setup(BTN_PWR, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(BTN_WATER, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+    def terminate(on):
         on = False
         return
 
-    GPIO.add_event_detect(BTN, GPIO.FALLING,
-                          callback=terminate, bouncetime=200)
+    def manualWater(manWater, p):
+        waterPlant(p)
+        water_lock.acquire()
+        manWater = True
+        water_lock.release()
+        return
+
+    GPIO.add_event_detect(BTN_PWR, GPIO.FALLING,
+                          callback=(lambda x: terminate(on)), bouncetime=200)
+    GPIO.add_event_detect(BTN_WATER, GPIO.FALLING,
+                          callback=(lambda x: waterPlant(manWater, p)), bouncetime=200)
 
     #GPIO.setup(SOIL_PWR, GPIO.OUT)
     #GPIO.output(SOIL_PWR, GPIO.LOW)
