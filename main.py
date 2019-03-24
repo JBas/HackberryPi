@@ -1,6 +1,8 @@
-import time
+#------------------------Imports-------------------------#
 from threading import Lock
-import datetime as dt
+import spidev
+import time
+import datetiem as dt
 import json
 from pprint import pprint
 import matplotlib
@@ -8,24 +10,23 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import RPi.GPIO as GPIO
-import spidev
 import Adafruit_DHT as DHT
 
 #-----------------------Definitions-----------------------#
-# Based on GPIO.BOARD mode
+
 SOIL_PWR = 17 # provides power to sensor
 SOIL_ADC = 0 # MCP3008 channel
 THRESHOLD = 1
 
 MOTOR_PWM = 18
-
 motor_lock = Lock()
 
-#dhtPwr = 13 # provides power to sensor
 DHT_SIG = 17 # grabs sensor data
 
 BTN_PWR = 23
 BTN_WATER = 24
+
+# flags
 on = True
 manWater = False
 
