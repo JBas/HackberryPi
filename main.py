@@ -34,10 +34,10 @@ manWater = False
 spi = spidev.SpiDev()
 
 # Experimentally defined min, max values
-imin = 1
-imax = 1
-omin = 1
-omax = 1
+#imin = 0
+#imax = 820
+#omin = 0
+#omax = 100
     
 # matplotlib setup
 fig = plt.figure()
@@ -51,7 +51,7 @@ def readDHT(data_humid, data_temp):
     # read temp/humid data
     humidity, temperature = DHT.read_retry(DHT.DHT11, DHT_SIG)
     if ((humidity is not None) and (temperature is not None)):
-        #print("Temp={0:0.1f}*, Humidity={0:0.1f}%\n".format(temperature, humidity))
+        print("Temp={0:0.1f}*, Humidity={0:0.1f}%".format(temperature, humidity))
         t = dt.datetime.now().strftime("%H:%M:%S:%f")
         data_humid.append((t, humidity))
         data_humid = data_humid[-100:]
@@ -59,7 +59,7 @@ def readDHT(data_humid, data_temp):
         data_temp.append((t, temperature))
         data_temp = data_temp[-100:]
     else:
-        print("Error Reading DHT!\n")
+        print("Error Reading DHT!")
     return
 
 def readSoilMoisture(data_soil):
@@ -70,12 +70,10 @@ def readSoilMoisture(data_soil):
     GPIO.output(SOIL_PWR, GPIO.HIGH)
     data = readADC(SOIL_ADC)
     if (data == -1):
-        print("Error Reading Soil!\n")
+        print("Error Reading Soil!")
     else:
-        #data = mapRange(data,
-        #config.imin, config.imax,
-        #config.omin, config.omax)
-        #print("Moisture={0:0.1f}".format(data))
+        #data = mapRange(data, 0, 820, 0, 100)
+        print("Moisture={0}%".format(data))
         t = dt.datetime.now().strftime("%H:%M")
         data_soil.append((t, data))
         data_soil = data_soil[-100:]
@@ -103,16 +101,16 @@ def plotData(i, data_humid, data_temp, data_soil):
         readDHT(data_humid, data_temp)
         #readSoilMoisture(data_soil)
 
-        if (not manWater):
-            try:
-                if (data_soil[-1][1] < THRESHOLD):
-                    #motorDriver(p)
-            except IndexError:
-                print("Empty List!")
-        else:
-            water_lock.acquire(blocking=False)
-            manWater = False
-            water_lock.release()
+        #if (not manWater):
+        #    try:
+        #        if (data_soil[-1][1] < THRESHOLD):
+        #            #motorDriver(p)
+        #    except IndexError:
+        #        print("Empty List!")
+        #else:
+        #    water_lock.acquire(blocking=False)
+        #    manWater = False
+        #    water_lock.release()
 
         ax1.clear()
         ax1.plot(*zip(*data_soil))
@@ -163,11 +161,13 @@ def main():
     GPIO.setup(BTN_PWR, GPIO.IN, pull_up_down=GPIO.PUD_UP)
     GPIO.setup(BTN_WATER, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-    def terminate(on):
+    def terminate():
+        global on
         on = False
         return
 
-    def manualWater(manWater, p):
+    def manualWater(p):
+        global manWater
         waterPlant(p)
         water_lock.acquire()
         manWater = True
@@ -175,9 +175,9 @@ def main():
         return
 
     GPIO.add_event_detect(BTN_PWR, GPIO.FALLING,
-                          callback=(lambda x: terminate(on)), bouncetime=200)
-    GPIO.add_event_detect(BTN_WATER, GPIO.FALLING,
-                          callback=(lambda x: waterPlant(manWater, p)), bouncetime=200)
+                          callback=(lambda x: terminate()), bouncetime=200)
+    #GPIO.add_event_detect(BTN_WATER, GPIO.FALLING,
+    #                      callback=(lambda x: waterPlant(p)), bouncetime=200)
 
     #GPIO.setup(SOIL_PWR, GPIO.OUT)
     #GPIO.output(SOIL_PWR, GPIO.LOW)
@@ -197,13 +197,13 @@ def main():
         GPIO.cleanup()
         print("Thank you!", end=" ")
         time.sleep(1)
-        print(".", end=" ")
+        print(".", end="")
         time.sleep(0.5)
-        print(".", end=" ")
+        print(".", end="")
         time.sleep(0.5)
-        print(".", end=" ")
+        print(".")
         time.sleep(0.5)
-        print("\nGoodbye!")
+        print("Goodbye!")
 
         #saveData(data_humid, data_temp, data_soil)
     return
