@@ -2,7 +2,7 @@
 from threading import Lock
 import spidev
 import time
-import datetiem as dt
+import datetime as dt
 import json
 from pprint import pprint
 import matplotlib
@@ -14,7 +14,7 @@ import Adafruit_DHT as DHT
 
 #-----------------------Definitions-----------------------#
 
-SOIL_PWR = 17 # provides power to sensor
+SOIL_PWR = 16 # provides power to sensor
 SOIL_ADC = 0 # MCP3008 channel
 THRESHOLD = 1
 
@@ -23,7 +23,7 @@ motor_lock = Lock()
 
 DHT_SIG = 17 # grabs sensor data
 
-BTN_PWR = 23
+BTN_PWR = 25
 BTN_WATER = 24
 
 # flags
@@ -51,7 +51,7 @@ def readDHT(data_humid, data_temp):
     # read temp/humid data
     humidity, temperature = DHT.read_retry(DHT.DHT11, DHT_SIG)
     if ((humidity is not None) and (temperature is not None)):
-        print("Temp={0:0.1f}*, Humidity={0:0.1f}%".format(temperature, humidity))
+        print("Temp={0:0.1f}*C, Humidity={0:0.1f}%".format(temperature, humidity))
         t = dt.datetime.now().strftime("%H:%M:%S:%f")
         data_humid.append((t, humidity))
         data_humid = data_humid[-100:]
@@ -96,10 +96,11 @@ def readADC(chan):
     datum = ((datum[1] & 0x11) << 8) + datum[2]
     return datum
 
-def plotData(i, data_humid, data_temp, data_soil):
+def plotData(i, data_humid, data_temp, data_soil, p):
     if (on):
         readDHT(data_humid, data_temp)
         #readSoilMoisture(data_soil)
+        waterPlant(p)
 
         #if (not manWater):
         #    try:
@@ -112,28 +113,31 @@ def plotData(i, data_humid, data_temp, data_soil):
         #    manWater = False
         #    water_lock.release()
 
-        ax1.clear()
-        ax1.plot(*zip(*data_soil))
-        ax1.set(xlabel="time", ylabel="voltage",
-                title="Soil Moisture v Time",
-                xticklabels=[])
-        ax1.tick_params(bottom=False)
+        #ax1.clear()
+        #ax1.plot(*zip(*data_soil))
+        #ax1.set(xlabel="time", ylabel="voltage",
+        #        title="Soil Moisture v Time",
+        #        xticklabels=[])
+        #ax1.tick_params(bottom=False)
+        ax1.plot().set_data(*zip(*data_soil));
+        ax2.plot().set_data(*zip(*data_temp));
+        ax3.plot().set_data(*zip(*data_humid));
 
-        ax2.clear()
-        ax2.plot(*zip(*data_temp))
-        ax2.set(xlabel="time", ylabel="voltage",
-                title="Temperature v Time",
-                xticklabels=[])
-        ax2.tick_params(bottom=False)
+        #ax2.clear()
+        #ax2.plot(*zip(*data_temp))
+        #ax2.set(xlabel="time", ylabel="voltage",
+        #        title="Temperature v Time",
+        #        xticklabels=[])
+        #ax2.tick_params(bottom=False)
 
-        ax3.clear()
-        ax3.plot(*zip(*data_humid))
-        ax3.set(xlabel="time", ylabel="voltage",
-                title="Humidity v Time",
-                xticklabels=[])
-        ax3.tick_params(bottom=False)
+        #ax3.clear()
+        #ax3.plot(*zip(*data_humid))
+        #ax3.set(xlabel="time", ylabel="voltage",
+        #        title="Humidity v Time",
+        #        xticklabels=[])
+        #ax3.tick_params(bottom=False)
     else:
-        plt.close("all")
+        plt.close()
     return
 
 def saveData(data_humid, data_temp, data_soil):
@@ -144,8 +148,8 @@ def saveData(data_humid, data_temp, data_soil):
     return
 
 def waterPlant(p):
-    p.ChangeDutyCycle(0.5)
-    time.sleep(2000)
+    p.ChangeDutyCycle(1)
+    time.sleep(5)
     p.ChangeDutyCycle(0)
     return
 
@@ -161,7 +165,7 @@ def main():
     GPIO.setup(BTN_PWR, GPIO.IN, pull_up_down=GPIO.PUD_UP)
     GPIO.setup(BTN_WATER, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-    def terminate():
+    def terminate(i):
         global on
         on = False
         return
@@ -175,27 +179,29 @@ def main():
         return
 
     GPIO.add_event_detect(BTN_PWR, GPIO.FALLING,
-                          callback=(lambda x: terminate()), bouncetime=200)
+                          callback=terminate, bouncetime=200)
     #GPIO.add_event_detect(BTN_WATER, GPIO.FALLING,
     #                      callback=(lambda x: waterPlant(p)), bouncetime=200)
 
     #GPIO.setup(SOIL_PWR, GPIO.OUT)
     #GPIO.output(SOIL_PWR, GPIO.LOW)
-
-    #p = GPIO.PWM(MOTOR_PWM, 1)
-    #p.start(0)
+    GPIO.setup(MOTOR_PWM, GPIO.OUT)
+    p = GPIO.PWM(MOTOR_PWM, 0.25)
+    p.start(0)
 
     try:
-        ani = animation.FuncAnimation(fig, plotData, interval=1000,
-                                      fargs=(data_humid,
-                                             data_temp,
-                                             data_soil))
+        ani = animation.FuncAnimation(fig, plotData, interval=2500,
+                                        fargs=(data_humid,
+                                               data_temp,
+                                               data_soil, p))
         plt.show()
+    except:
+        plt.close("all")
     finally:
-        #p.stop()
+        p.stop()
+        print("\nThank you!", end=" ")
         spi.close()
         GPIO.cleanup()
-        print("Thank you!", end=" ")
         time.sleep(1)
         print(".", end="")
         time.sleep(0.5)
